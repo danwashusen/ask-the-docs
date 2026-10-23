@@ -32,4 +32,5 @@ glob: "docs/**/*.md"
 sort: path
 row: "- [{summary}]({filename})"
 ?>
+- [MVP product requirements: a local CLI that indexes a repo's docs folder in Elasticsearch, keeps it fresh, and serves section-level search to coding agents.](docs/prd.md)
 <?/catalog?>
