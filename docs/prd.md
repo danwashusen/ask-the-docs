@@ -1,5 +1,5 @@
 ---
-summary: "MVP product requirements: a local CLI that indexes a repo's docs folder in Elasticsearch, keeps it fresh, and serves section-level search to coding agents."
+summary: "MVP product requirements hub: a local CLI that indexes codebases' docs in a shared Elasticsearch, keeps them fresh, and serves section and document queries to coding agents."
 ---
 # ask-the-docs: product requirements (MVP)
 
@@ -30,7 +30,8 @@ whole-file reads. The MVP exists to test this on a real repo with a large
    Every codebase on the machine shares it.
 2. The developer lists their codebases in the YAML config file.
 3. `atd watch` indexes every Markdown file in each configured codebase,
-   then watches for changes.
+   then watches for changes. Watching is optional: queries catch up on
+   changed files themselves.
 4. An agent runs `atd search "how are retries configured" --json`. It gets
    ranked sections with path, heading trail, line range and snippet.
 5. The agent reads only the lines it needs, or runs `atd show` for one
@@ -47,6 +48,12 @@ whole-file reads. The MVP exists to test this on a real repo with a large
 - R-section-chunks: split each file into one record per heading section.
   Each record holds the file path, heading trail, anchor, start and end
   lines, and body text.
+- R-oversized-sections: split a section larger than the configured size
+  limit into parts at paragraph boundaries. Parts share the heading and
+  anchor, and each keeps its own line range.
+- R-tunable-section-limit: the size limit defaults to 32 KB. It can be set
+  globally and per codebase. Changing it rebuilds the affected indexes on
+  the next sync.
 - R-front-matter: parse YAML front matter. Store `summary` and `title` when
   present, and keep them out of the body text.
 - R-content-hash: store a content hash per file. A sync skips files whose
@@ -80,33 +87,8 @@ container runs once.
 
 ### Configuration
 
-- R-yaml-config: read settings and the codebase list from one YAML file.
-  The default path is `~/.config/ask-the-docs/config.yaml`.
-- R-config-override: `--config <path>` or the `ATD_CONFIG` variable selects
-  another file.
-- R-config-precedence: a flag beats an environment variable, which beats
-  the file, which beats the built-in default.
-- R-codebase-settings: each codebase entry sets its root and may set its
-  docs folders, exclude globs and catalogue path. The defaults are `docs/`,
-  none and `docs/README.md`.
-- R-tool-settings: top-level settings cover the Elasticsearch URL, the
-  default result limit and the watch debounce interval.
-- R-config-validation: an invalid file, unknown key or duplicate name fails
-  at startup. The error names the file and the offending key.
-- R-config-restart: config changes take effect when `atd watch` restarts.
-
-A minimal file looks like this:
-
-```yaml
-elasticsearch:
-  url: http://localhost:9200
-codebases:
-  - root: ~/Development/Projects/ask-the-docs
-  - name: billing
-    root: ~/work/billing-service
-    docs: [docs/, adr/]
-    exclude: ["docs/archive/**"]
-```
+One YAML file holds tool settings and the list of codebases. Its
+requirements live in [prd/configuration.md](prd/configuration.md).
 
 ### Doc catalogue
 
@@ -127,7 +109,22 @@ codebases:
   watcher was off are picked up.
 - R-watch-changes: watch the folder and apply creates, edits, renames and
   deletes. Debounce bursts, such as a branch checkout.
-- R-freshness-target: a saved edit is searchable within 2 seconds.
+- R-watch-optional: `atd watch` speeds things up but is never required.
+  Every query command works without it.
+- R-freshness-target: while `atd watch` runs, a saved edit is searchable
+  within 2 seconds.
+- R-lazy-sync: when no watcher serves a codebase, a query first compares
+  file modified times and sizes with the index. It reindexes changed files
+  before answering.
+- R-sync-budget: lazy sync stops after a time budget, 1 second by default
+  and configurable. The query then answers from the index as it stands.
+- R-stale-results: results from files that changed but were not reindexed
+  carry `stale: true` in JSON. One stderr line suggests `atd sync` or
+  `atd watch`.
+- R-lazy-sync-off: `lazy_sync: false` in config, or `--no-sync` on a query,
+  skips the check.
+- R-sync-command: `atd sync [name]` reconciles one or all codebases once,
+  with no budget.
 
 ### Search
 
@@ -136,8 +133,8 @@ codebases:
 - R-search-filters: support `--limit`, `--path <glob>`, `--role <slug>` and
   `--binding`.
 - R-json-output: `--json` prints one JSON array of results. Each holds path,
-  heading trail, start and end lines, role, authority, score and a short
-  snippet. The schema is documented and stable.
+  heading trail, anchor, start and end lines, role, authority, score, stale
+  flag and a short snippet. The schema is documented and stable.
 - R-compact-text: the default text output fits one result per two lines, so
   an agent can scan it cheaply.
 - R-show-section: `atd show <path>#<anchor>` prints the full text of one
@@ -160,20 +157,8 @@ section records already indexed, so Elasticsearch needs no extra data.
 
 ### Agent skill
 
-A Claude Code plugin ships with the tool. Its skill turns a natural-language
-question into CLI calls, so the CLI only ever takes structured input.
-
-- R-skill-routing: the skill maps question types to commands. Topic
-  questions go to `atd docs`, passage questions to `atd search`, structure
-  questions to `atd toc`, and a known section to `atd show`.
-- R-skill-query-rewrite: the skill turns a question into search terms. It
-  may run more than one query, such as synonyms, before it answers.
-- R-skill-minimal-reads: the skill reads only the line ranges it needs,
-  never whole files when a section will do.
-- R-skill-authority: the skill reports each source's authority. It flags a
-  conflict with a `binding` doc rather than working around it.
-- R-skill-not-running: when the CLI or Elasticsearch is unavailable, the
-  skill says so and how to fix it. It may then fall back to grep.
+A Claude Code plugin ships with the tool. Its requirements live in
+[prd/skill.md](prd/skill.md).
 
 ### Operations
 
@@ -212,6 +197,9 @@ question into CLI calls, so the CLI only ever takes structured input.
   docs.
 - D-catalogue-as-metadata: the catalogue enriches and boosts records but
   never limits what gets indexed. The tool stays useful on repos without one.
+- D-watch-optional: freshness comes from a watcher when one runs, and from
+  budgeted lazy sync otherwise. Large files make unbounded sync on query
+  too slow, so the budget caps the wait and marks what it skipped.
 - D-skill-owns-language: the CLI takes structured queries and the skill
   translates questions. The CLI stays deterministic and testable without a
   model, and the agent already supplies the language understanding.
@@ -229,6 +217,8 @@ Test on the real-world repo's `docs/` folder.
   one using grep and file reads. Measure tool calls and tokens read. `atd`
   should cut both.
 - Indexing: a full index of the folder finishes in under a minute.
+- Large files: an early spike times parsing and indexing of the largest
+  files. Its results set the default sync budget and section size limit.
 - Freshness: R-freshness-target holds while editing files by hand.
 
 ## Open questions

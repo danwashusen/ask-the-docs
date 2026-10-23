@@ -32,5 +32,12 @@ glob: "docs/**/*.md"
 sort: path
 row: "- [{summary}]({filename})"
 ?>
-- [MVP product requirements: a local CLI that indexes a repo's docs folder in Elasticsearch, keeps it fresh, and serves section-level search to coding agents.](docs/prd.md)
+- [Architecture hub: process model, components, package layout, libraries, testing and design decisions for the atd CLI and its Claude Code plugin.](docs/architecture.md)
+- [Architecture spoke: how atd keeps indexes fresh with the per-codebase lock, the optional watcher, budgeted lazy sync and atd sync.](docs/architecture/freshness.md)
+- [Architecture spoke: how atd discovers and parses Markdown, the record model and mapping, index naming, rebuilds and per-file updates.](docs/architecture/indexing.md)
+- [Architecture spoke: how atd resolves the codebase for a query, builds search, docs, toc and show requests, ranks results and renders output.](docs/architecture/query.md)
+- [MVP product requirements hub: a local CLI that indexes codebases' docs in a shared Elasticsearch, keeps them fresh, and serves section and document queries to coding agents.](docs/prd.md)
+- [PRD spoke: requirements for the YAML config file that holds tool settings and the list of monitored codebases.](docs/prd/configuration.md)
+- [PRD spoke: requirements for the Claude Code skill that turns natural-language questions about docs into atd CLI calls.](docs/prd/skill.md)
+- [Documentation map and the doc-catalogue block that tells the github-pipeline skills which docs ground work on this repo.](docs/README.md)
 <?/catalog?>
