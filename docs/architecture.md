@@ -65,7 +65,7 @@ plugin/                 # Claude Code plugin
   skills/ask-the-docs/SKILL.md
 tests/unit/             # no Elasticsearch needed
 tests/integration/      # needs the compose Elasticsearch
-eval/                   # question sets and the scoring script
+eval/                   # scoring script only; data lives outside the repo
 ```
 
 ## Libraries
@@ -95,10 +95,12 @@ requirements are in [prd/skill.md](prd/skill.md).
 - Integration tests run against the compose Elasticsearch. They use an
   `atd-test-` index prefix and cover writes, deletes, alias swaps, scoping
   and collapse queries.
-- The eval harness in `eval/` holds the PRD's question sets with expected
-  sections and documents. A script reports top-3 hit rates and timings.
+- The eval harness in `eval/` scores question sets against expected
+  sections and documents, and reports top-3 hit rates and timings. It reads
+  the sets from a path given by flag, per D-private-eval-data.
 - The first spike times parsing and indexing of the largest files in the
-  real-world repo. It sets the defaults for the sync budget and section
+  real-world repo. It reports sizes and timings, never file names or
+  content. It sets the defaults for the sync budget and section
   size limit.
 
 ## Decisions
@@ -114,5 +116,9 @@ requirements are in [prd/skill.md](prd/skill.md).
 - D-leaf-sections: a section runs from its heading to the next heading of
   any level. No text is indexed twice, and the heading trail supplies the
   parent context.
+- D-private-eval-data: this repo is public and the real-world test repo is
+  proprietary. Question sets, expected answers, eval results and spike
+  output stay outside this repo. Tests and examples use synthetic docs, and
+  issues and pull requests never quote the test repo.
 - D-single-writer-lock: one lock file per codebase, taken by watch, sync and
   lazy sync alike. Two writers can never interleave updates to one index.
