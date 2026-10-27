@@ -58,6 +58,18 @@ class CodebaseConfig(BaseModel):
                 raise ValueError(f"docs folder {folder!r} must be relative to root")
         return docs
 
+    @field_validator("exclude")
+    @classmethod
+    def _matchable_exclude(cls, exclude: list[str]) -> list[str]:
+        # Globs match root-relative POSIX paths, so other forms never match.
+        for glob in exclude:
+            parts = glob.split("/")
+            if glob.startswith("/") or any(p in ("", ".", "..") for p in parts):
+                raise ValueError(
+                    f"exclude glob {glob!r} must be relative to root, such as 'docs/archive/**'"
+                )
+        return exclude
+
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid")

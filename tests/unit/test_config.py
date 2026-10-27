@@ -108,6 +108,16 @@ def test_invalid_yaml_names_the_file(tmp_path):
         ("codebases: []\n", "codebases"),
         ("codebases:\n  - root: /a\n    docs: ['']\n", "codebases.0.docs"),
         ("codebases:\n  - root: /a\n    docs: []\n", "codebases.0.docs"),
+        (
+            "codebases:\n  - root: /a\n    exclude: [/docs/x/**]\n",
+            "codebases.0.exclude",
+        ),
+        (
+            "codebases:\n  - root: /a\n    exclude: [./docs/x/**]\n",
+            "codebases.0.exclude",
+        ),
+        ("codebases:\n  - root: /a\n    exclude: [docs/x/]\n", "codebases.0.exclude"),
+        ("codebases:\n  - root: /a\n    exclude: ['']\n", "codebases.0.exclude"),
         ("codebases:\n  - root: 5\n", "codebases.0.root"),
         ("codebases:\n  - docs: [docs/]\n", "codebases.0.root"),
         ("codebases:\n  - root: /a\n    docs: [/abs/docs]\n", "codebases.0.docs"),
