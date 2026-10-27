@@ -79,6 +79,7 @@ rules:
 ignore:
   - ".venv/**"
   - ".worktrees/**" # github-pipeline workspaces; linted in their own checkout
+  - "tests/fixtures/**" # parser test inputs; they break lint rules on purpose
 
 # COMMANDS.md and docs/README.md hold github-pipeline config blocks. The
 # plugin rewrites their exact bytes and parses one entry per line, so rules
