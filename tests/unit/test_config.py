@@ -106,6 +106,8 @@ def test_invalid_yaml_names_the_file(tmp_path):
         ("codebases:\n  - root: /a\n  - root: relative/b\n", "codebases.1.root"),
         ("codebases:\n  - root: /a\nelasticsearch: {}\n", "elasticsearch"),
         ("codebases: []\n", "codebases"),
+        ("codebases:\n  - root: /a\n    docs: ['']\n", "codebases.0.docs"),
+        ("codebases:\n  - root: /a\n    docs: []\n", "codebases.0.docs"),
         ("codebases:\n  - root: 5\n", "codebases.0.root"),
         ("codebases:\n  - docs: [docs/]\n", "codebases.0.root"),
         ("codebases:\n  - root: /a\n    docs: [/abs/docs]\n", "codebases.0.docs"),
@@ -141,3 +143,9 @@ def test_duplicate_name_names_second_entry(tmp_path):
 
     assert str(excinfo.value).startswith(f"{path}: codebases.2.name: ")
     assert "widgets" in str(excinfo.value)
+
+
+def test_root_docs_folder_loads(tmp_path):
+    path = write(tmp_path, "codebases:\n  - root: /a\n    docs: [.]\n")
+
+    assert load_config(path).codebases[0].docs == ["."]

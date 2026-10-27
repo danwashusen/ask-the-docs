@@ -53,6 +53,8 @@ def _git_list(root: Path, docs: list[str]) -> list[str] | None:
         ],
         capture_output=True,
         check=True,
+        # Docs entries are folders, not git pathspecs: no globs or `:` magic.
+        env={**os.environ, "GIT_LITERAL_PATHSPECS": "1"},
     )
     names = listing.stdout.decode("utf-8", errors="surrogateescape").split("\0")
     # A tracked file deleted from disk is still listed until the deletion is staged.

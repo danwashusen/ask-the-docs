@@ -27,7 +27,7 @@ class CodebaseConfig(BaseModel):
 
     name: str
     root: Path
-    docs: list[str] = ["docs/"]
+    docs: list[str] = Field(default=["docs/"], min_length=1)
     exclude: list[str] = []
 
     @model_validator(mode="before")
@@ -51,6 +51,8 @@ class CodebaseConfig(BaseModel):
     @classmethod
     def _relative_docs(cls, docs: list[str]) -> list[str]:
         for folder in docs:
+            if not folder:
+                raise ValueError("docs folder must not be empty; use '.' for the root")
             path = PurePosixPath(folder)
             if path.is_absolute() or ".." in path.parts:
                 raise ValueError(f"docs folder {folder!r} must be relative to root")

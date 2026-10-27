@@ -188,12 +188,19 @@ def test_empty_slug_without_preamble(tmp_path):
     assert [s.anchor for s in parse_file(tmp_path, "doc.md").sections] == [""]
 
 
-def test_multi_line_setext_heading_matches_github_slug(tmp_path):
-    (tmp_path / "doc.md").write_text("Line one\nLine two\n---\n\nBody.\n")
+@pytest.mark.parametrize("line_end", ["", "\\", "  "])
+def test_multi_line_heading_reads_as_spaced_text(tmp_path, line_end):
+    (tmp_path / "doc.md").write_text(f"Line one{line_end}\nLine two\n===\n\nBody.\n")
 
-    (section,) = parse_file(tmp_path, "doc.md").sections
+    parsed = parse_file(tmp_path, "doc.md")
 
-    assert (section.heading, section.anchor) == ("Line oneLine two", "line-oneline-two")
+    (section,) = parsed.sections
+    assert (section.heading, section.anchor) == (
+        "Line one Line two",
+        "line-oneline-two",
+    )
+    assert section.heading_trail == ("Line one Line two",)
+    assert parsed.file.title == "Line one Line two"
     assert (section.start_line, section.end_line, section.body) == (1, 5, "Body.")
 
 

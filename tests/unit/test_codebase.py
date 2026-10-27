@@ -109,3 +109,14 @@ def test_several_docs_folders_and_missing_folder(tmp_path):
     )
 
     assert discover(config) == ["adr/0001.md"]
+
+
+@needs_git
+def test_docs_entries_are_literal_folders(tmp_path):
+    root = tmp_path / "service"
+    make_tree(root)
+    (tmp_path / "outside.md").write_text("# Outside\n")
+    git(tmp_path, "init", "-q")
+    config = CodebaseConfig(name="s", root=root, docs=[":/", "docs/*.md"], exclude=[])
+
+    assert discover(config) == []

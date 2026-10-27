@@ -54,6 +54,7 @@ class ParsedFile:
 class _Heading:
     level: int
     text: str
+    slug: str
     start: int  # 0-based index of the heading's first line
     body_start: int  # 0-based index of the first line after the heading
 
@@ -123,7 +124,7 @@ def parse_file(root: Path, rel_path: str) -> ParsedFile:
         stack.append(heading)
         stop = headings[index + 1].start if index + 1 < len(headings) else len(lines)
         add(
-            _unique_slug(_slug(heading.text), slugs),
+            _unique_slug(heading.slug, slugs),
             heading.text,
             tuple(h.text for h in stack),
             heading.level,
@@ -179,10 +180,13 @@ def _headings(lines: list[str]) -> list[_Heading]:
         if token.type != "heading_open" or token.map is None:
             continue
         start, body_start = token.map
+        raw = _inline_text(tokens[index + 1])
         headings.append(
             _Heading(
                 level=int(token.tag[1:]),
-                text=_inline_text(tokens[index + 1]),
+                # A line break reads as a space, but GitHub's anchor drops it.
+                text=raw.replace("\n", " "),
+                slug=_slug(raw),
                 start=start,
                 body_start=body_start,
             )
@@ -195,6 +199,8 @@ def _inline_text(inline: Token) -> str:
     for child in inline.children or []:
         if child.type in ("text", "code_inline"):
             parts.append(child.content)
+        elif child.type in ("softbreak", "hardbreak"):
+            parts.append("\n")
     return "".join(parts).strip()
 
 
