@@ -1,7 +1,7 @@
 """Load and validate the YAML config: tool settings and monitored codebases."""
 
 from collections.abc import Callable, Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -23,7 +23,7 @@ class ConfigError(Exception):
 
 
 class CodebaseConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid")
 
     name: str
     root: Path
@@ -47,9 +47,18 @@ class CodebaseConfig(BaseModel):
             raise ValueError("root must be an absolute path")
         return root
 
+    @field_validator("docs")
+    @classmethod
+    def _relative_docs(cls, docs: list[str]) -> list[str]:
+        for folder in docs:
+            path = PurePosixPath(folder)
+            if path.is_absolute() or ".." in path.parts:
+                raise ValueError(f"docs folder {folder!r} must be relative to root")
+        return docs
+
 
 class Config(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid")
 
     codebases: list[CodebaseConfig] = Field(min_length=1)
 
@@ -88,6 +97,8 @@ def load_config(path: Path) -> Config:
         raise ConfigError(
             f"{path}: cannot read config file: {exc.strerror or exc}"
         ) from exc
+    except UnicodeDecodeError as exc:
+        raise ConfigError(f"{path}: config file is not valid UTF-8") from exc
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -96,7 +107,16 @@ def load_config(path: Path) -> Config:
     try:
         config = Config.model_validate(data if data is not None else {})
     except ValidationError as exc:
-        error = exc.errors()[0]
+        errors = exc.errors()
+        # A name is only missing because root could not fill it, so report root.
+        error = next(
+            (
+                e
+                for e in errors
+                if not (e["type"] == "missing" and e["loc"][-1] == "name")
+            ),
+            errors[0],
+        )
         key = ".".join(str(part) for part in error["loc"]) or "(top level)"
         raise ConfigError(f"{path}: {key}: {error['msg']}") from exc
 

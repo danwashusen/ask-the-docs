@@ -14,6 +14,13 @@ needs_git = pytest.mark.skipif(
 EXPECTED = ["docs/guide.md", "docs/notes/untracked.md", "docs/ref/api.md"]
 
 
+@pytest.fixture(autouse=True)
+def isolated_git(monkeypatch):
+    """Keep the developer's git config (signing, hooks, global ignores) out of the tests."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+
 def make_tree(root: Path) -> None:
     files = {
         "docs/guide.md": "# Guide\n",

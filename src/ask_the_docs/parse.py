@@ -112,10 +112,10 @@ def parse_file(root: Path, rel_path: str) -> ParsedFile:
 
     preamble_stop = headings[0].start if headings else len(lines)
     first_text = next((i for i in range(preamble_stop) if lines[i].strip()), None)
+    slugs: dict[str, int] = {}
     if first_text is not None:
         add("", title or "", (), 0, first_text, first_text, preamble_stop)
-
-    slugs: dict[str, int] = {}
+        slugs[""] = 0  # the preamble owns the empty anchor
     stack: list[_Heading] = []
     for index, heading in enumerate(headings):
         while stack and stack[-1].level >= heading.level:
@@ -148,8 +148,8 @@ def _split_front_matter(lines: list[str]) -> tuple[dict[str, Any], list[str]]:
     """Return the front-matter mapping and the lines with the block blanked out.
 
     Blanking, rather than removing, keeps every later line number true to the
-    file. A block that is not valid YAML or not a mapping is left in place and
-    parsed as ordinary Markdown.
+    file. An empty block counts as an empty mapping. A block that is not valid
+    YAML or not a mapping is left in place and parsed as ordinary Markdown.
     """
     if not lines or lines[0].rstrip() != "---":
         return {}, lines
@@ -160,6 +160,8 @@ def _split_front_matter(lines: list[str]) -> tuple[dict[str, Any], list[str]]:
         data = yaml.safe_load("\n".join(lines[1:close]))
     except yaml.YAMLError:
         return {}, lines
+    if data is None:  # an empty block is still front matter
+        data = {}
     if not isinstance(data, dict):
         return {}, lines
     return data, [""] * (close + 1) + lines[close + 1 :]
@@ -193,8 +195,6 @@ def _inline_text(inline: Token) -> str:
     for child in inline.children or []:
         if child.type in ("text", "code_inline"):
             parts.append(child.content)
-        elif child.type in ("softbreak", "hardbreak"):
-            parts.append(" ")
     return "".join(parts).strip()
 
 

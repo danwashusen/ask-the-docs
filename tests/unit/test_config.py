@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -76,14 +77,24 @@ def test_valid_file_applies_defaults(tmp_path):
 def test_missing_file_names_the_file(tmp_path):
     path = tmp_path / "absent.yaml"
 
-    with pytest.raises(ConfigError, match=str(path)):
+    with pytest.raises(ConfigError, match=re.escape(str(path))):
+        load_config(path)
+
+
+def test_non_utf8_file_names_the_file(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_bytes(b"codebases:\n  - root: /caf\xe9\n")
+
+    with pytest.raises(
+        ConfigError, match=re.escape(f"{path}: config file is not valid UTF-8")
+    ):
         load_config(path)
 
 
 def test_invalid_yaml_names_the_file(tmp_path):
     path = write(tmp_path, "codebases: [unclosed\n")
 
-    with pytest.raises(ConfigError, match=f"{path}: invalid YAML"):
+    with pytest.raises(ConfigError, match=re.escape(f"{path}: invalid YAML")):
         load_config(path)
 
 
@@ -95,6 +106,10 @@ def test_invalid_yaml_names_the_file(tmp_path):
         ("codebases:\n  - root: /a\n  - root: relative/b\n", "codebases.1.root"),
         ("codebases:\n  - root: /a\nelasticsearch: {}\n", "elasticsearch"),
         ("codebases: []\n", "codebases"),
+        ("codebases:\n  - root: 5\n", "codebases.0.root"),
+        ("codebases:\n  - docs: [docs/]\n", "codebases.0.root"),
+        ("codebases:\n  - root: /a\n    docs: [/abs/docs]\n", "codebases.0.docs"),
+        ("codebases:\n  - root: /a\n    docs: [../shared]\n", "codebases.0.docs"),
         ("", "codebases"),
     ],
 )
@@ -110,7 +125,7 @@ def test_validation_errors_name_file_and_key(tmp_path, text, key):
 def test_non_mapping_file_names_the_file(tmp_path):
     path = write(tmp_path, "- just\n- a list\n")
 
-    with pytest.raises(ConfigError, match=str(path)):
+    with pytest.raises(ConfigError, match=re.escape(str(path))):
         load_config(path)
 
 

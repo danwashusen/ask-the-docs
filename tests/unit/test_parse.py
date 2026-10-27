@@ -129,6 +129,14 @@ def test_unclosed_front_matter_is_parsed_as_markdown(tmp_path):
     assert parsed.sections[0].start_line == 1
 
 
+def test_empty_front_matter_is_blanked(tmp_path):
+    (tmp_path / "doc.md").write_text("---\n---\n\n# T\n\nBody.\n")
+
+    sections = parse_file(tmp_path, "doc.md").sections
+
+    assert [(s.heading, s.start_line, s.end_line) for s in sections] == [("T", 4, 6)]
+
+
 def test_file_without_headings_is_one_preamble():
     parsed = parse_file(FIXTURES, "plain.md")
 
@@ -164,6 +172,29 @@ def test_heading_text_and_anchor_rules(tmp_path):
         ("Usage", "usage-1"),
         ("Usage-1", "usage-1-1"),
     ]
+
+
+def test_empty_slug_does_not_reuse_the_preamble_anchor(tmp_path):
+    (tmp_path / "doc.md").write_text("Intro.\n\n## \U0001f680\n\n## !!\n")
+
+    sections = parse_file(tmp_path, "doc.md").sections
+
+    assert [s.anchor for s in sections] == ["", "-1", "-2"]
+
+
+def test_empty_slug_without_preamble(tmp_path):
+    (tmp_path / "doc.md").write_text("## \U0001f680\n")
+
+    assert [s.anchor for s in parse_file(tmp_path, "doc.md").sections] == [""]
+
+
+def test_multi_line_setext_heading_matches_github_slug(tmp_path):
+    (tmp_path / "doc.md").write_text("Line one\nLine two\n---\n\nBody.\n")
+
+    (section,) = parse_file(tmp_path, "doc.md").sections
+
+    assert (section.heading, section.anchor) == ("Line oneLine two", "line-oneline-two")
+    assert (section.start_line, section.end_line, section.body) == (1, 5, "Body.")
 
 
 def test_file_record_fields():
