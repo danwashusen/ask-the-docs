@@ -32,7 +32,7 @@ def _expand_user(path: Path) -> Path:
     try:
         return path.expanduser()
     except RuntimeError as exc:
-        raise ValueError(f"cannot expand '~' in {path}") from exc
+        raise ValueError("cannot expand '~': unknown user or home folder") from exc
 
 
 def _normalize_root(value: str | Path) -> Path:
@@ -62,9 +62,12 @@ class CodebaseConfig(BaseModel):
             root = data.get("root")
             if isinstance(root, (str, Path)):
                 try:
-                    data["name"] = _normalize_root(root).name
+                    normalized = _normalize_root(root)
                 except ValueError:
-                    pass
+                    normalized = None
+                # Leave name absent for a root that will fail, so root's error shows.
+                if normalized is not None and normalized.is_absolute():
+                    data["name"] = normalized.name
         return data
 
     @field_validator("name")

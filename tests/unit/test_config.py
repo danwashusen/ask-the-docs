@@ -174,6 +174,9 @@ def test_impossible_yaml_date_is_invalid_yaml(tmp_path):
         ("codebases:\n  - root: ~nosuchuser_atd/x\n", "codebases.0.root"),
         ("codebases:\n  - name:\n", "codebases.0.root"),
         ("codebases:\n  - root: /\n", "codebases.0.name"),
+        ("codebases:\n  - root: .\n", "codebases.0.root"),
+        ("codebases:\n  - root: ''\n", "codebases.0.root"),
+        ("codebases:\n  - root: ./x/..\n", "codebases.0.root"),
         ("codebases:\n  - name: ''\n    root: /a\n", "codebases.0.name"),
     ],
 )
@@ -205,8 +208,10 @@ def test_normalized_roots_share_a_name(tmp_path):
 def test_config_path_with_unknown_user_raises_config_error(flag):
     env = {"ATD_CONFIG": "~nosuchuser_atd/c.yaml"}
 
-    with pytest.raises(ConfigError, match="nosuchuser_atd"):
+    with pytest.raises(ConfigError) as excinfo:
         resolve_config_path(flag, env)
+
+    assert str(excinfo.value).count("nosuchuser_atd") == 1
 
 
 def test_empty_env_value_counts_as_unset():
