@@ -159,3 +159,59 @@ def test_root_docs_folder_loads(tmp_path):
     path = write(tmp_path, "codebases:\n  - root: /a\n    docs: [.]\n")
 
     assert load_config(path).codebases[0].docs == ["."]
+
+
+def test_impossible_yaml_date_is_invalid_yaml(tmp_path):
+    path = write(tmp_path, "codebases:\n  - root: /a\nadded: 2024-13-45\n")
+
+    with pytest.raises(ConfigError, match=re.escape(f"{path}: invalid YAML")):
+        load_config(path)
+
+
+@pytest.mark.parametrize(
+    ("text", "key"),
+    [
+        ("codebases:\n  - root: ~nosuchuser_atd/x\n", "codebases.0.root"),
+        ("codebases:\n  - name:\n", "codebases.0.root"),
+        ("codebases:\n  - root: /\n", "codebases.0.name"),
+        ("codebases:\n  - name: ''\n    root: /a\n", "codebases.0.name"),
+    ],
+)
+def test_root_and_name_errors_name_the_key(tmp_path, text, key):
+    path = write(tmp_path, text)
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(path)
+
+    assert str(excinfo.value).startswith(f"{path}: {key}: ")
+
+
+def test_root_is_normalized_before_naming(tmp_path):
+    path = write(tmp_path, "codebases:\n  - root: /srv/widgets/docs/..\n")
+
+    (codebase,) = load_config(path).codebases
+
+    assert (codebase.name, codebase.root) == ("widgets", Path("/srv/widgets"))
+
+
+def test_normalized_roots_share_a_name(tmp_path):
+    path = write(tmp_path, "codebases:\n  - root: /x/a\n  - root: /y/a/b/..\n")
+
+    with pytest.raises(ConfigError, match=re.escape(f"{path}: codebases.1.name: ")):
+        load_config(path)
+
+
+@pytest.mark.parametrize("flag", [Path("~nosuchuser_atd/c.yaml"), None])
+def test_config_path_with_unknown_user_raises_config_error(flag):
+    env = {"ATD_CONFIG": "~nosuchuser_atd/c.yaml"}
+
+    with pytest.raises(ConfigError, match="nosuchuser_atd"):
+        resolve_config_path(flag, env)
+
+
+def test_empty_env_value_counts_as_unset():
+    assert (
+        resolve_config_path(None, {"ATD_CONFIG": ""})
+        == DEFAULT_CONFIG_PATH.expanduser()
+    )
+    assert resolve_setting(None, "", 10, 5, convert=int) == 10

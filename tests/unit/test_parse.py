@@ -246,3 +246,38 @@ def test_nested_path_is_kept(tmp_path):
 
     assert parsed.file.path == "docs/sub/a.md"
     assert parsed.sections[0].path == "docs/sub/a.md"
+
+
+def test_impossible_front_matter_date_is_parsed_as_markdown(tmp_path):
+    (tmp_path / "doc.md").write_text("---\ndate: 2024-13-45\n---\n# H\n")
+
+    parsed = parse_file(tmp_path, "doc.md")
+
+    assert parsed.file.title == "H"
+    assert [(s.level, s.start_line) for s in parsed.sections] == [
+        (0, 1),
+        (2, 2),
+        (1, 4),
+    ]
+
+
+def test_body_skips_leading_whitespace_lines(tmp_path):
+    (tmp_path / "doc.md").write_text("# H\n   \n\n    indented code\n")
+
+    (section,) = parse_file(tmp_path, "doc.md").sections
+
+    assert section.body == "    indented code"
+
+
+@pytest.mark.parametrize(
+    ("text", "title"),
+    [
+        ("---\ntitle: ''\n---\n# Real\n", "Real"),
+        ("#\n\n# Second\n", "Second"),
+        ("#\n", None),
+    ],
+)
+def test_empty_title_counts_as_absent(tmp_path, text, title):
+    (tmp_path / "doc.md").write_text(text)
+
+    assert parse_file(tmp_path, "doc.md").file.title == title

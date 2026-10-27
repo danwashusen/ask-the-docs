@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ask_the_docs.codebase import discover
+from ask_the_docs.codebase import DiscoveryError, discover
 from ask_the_docs.config import CodebaseConfig
 
 needs_git = pytest.mark.skipif(
@@ -120,3 +120,41 @@ def test_docs_entries_are_literal_folders(tmp_path):
     config = CodebaseConfig(name="s", root=root, docs=[":/", "docs/*.md"], exclude=[])
 
     assert discover(config) == []
+
+
+def test_dangling_symlink_is_skipped(tmp_path):
+    make_tree(tmp_path)
+    (tmp_path / "docs" / "dangling.md").symlink_to(tmp_path / "missing.md")
+
+    assert discover(codebase(tmp_path)) == sorted(
+        EXPECTED + ["docs/build/generated.md"]
+    )
+
+
+@needs_git
+def test_dangling_symlink_is_skipped_in_git(tmp_path):
+    make_tree(tmp_path)
+    (tmp_path / ".gitignore").write_text("docs/build/\n")
+    (tmp_path / "docs" / "dangling.md").symlink_to(tmp_path / "missing.md")
+    git(tmp_path, "init", "-q")
+
+    assert discover(codebase(tmp_path)) == EXPECTED
+
+
+@needs_git
+def test_git_listing_failure_raises_discovery_error(tmp_path, monkeypatch):
+    make_tree(tmp_path)
+    git(tmp_path, "init", "-q")
+    real_run = subprocess.run
+
+    def failing_ls_files(args, **kwargs):
+        if "ls-files" in args:
+            raise subprocess.CalledProcessError(
+                128, args, b"", b"fatal: index file corrupt"
+            )
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", failing_ls_files)
+
+    with pytest.raises(DiscoveryError, match="index file corrupt"):
+        discover(codebase(tmp_path))

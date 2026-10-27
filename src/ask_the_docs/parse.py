@@ -79,7 +79,7 @@ def parse_file(root: Path, rel_path: str) -> ParsedFile:
 
     title = _string_field(front_matter, "title")
     if title is None:
-        title = next((h.text for h in headings if h.level == 1), None)
+        title = next((h.text for h in headings if h.level == 1 and h.text), None)
     summary = _string_field(front_matter, "summary")
 
     sections: list[SectionRecord] = []
@@ -94,7 +94,10 @@ def parse_file(root: Path, rel_path: str) -> ParsedFile:
         stop: int,
     ) -> None:
         end = _trim_trailing_blanks(lines, start, stop)
-        body = "\n".join(lines[body_start : end + 1]).strip("\n")
+        first = next(
+            (i for i in range(body_start, end + 1) if not _is_blank(lines[i])), end + 1
+        )
+        body = "\n".join(lines[first : end + 1])
         sections.append(
             SectionRecord(
                 path=rel_path,
@@ -112,7 +115,9 @@ def parse_file(root: Path, rel_path: str) -> ParsedFile:
         )
 
     preamble_stop = headings[0].start if headings else len(lines)
-    first_text = next((i for i in range(preamble_stop) if lines[i].strip()), None)
+    first_text = next(
+        (i for i in range(preamble_stop) if not _is_blank(lines[i])), None
+    )
     slugs: dict[str, int] = {}
     if first_text is not None:
         add("", title or "", (), 0, first_text, first_text, preamble_stop)
@@ -159,7 +164,8 @@ def _split_front_matter(lines: list[str]) -> tuple[dict[str, Any], list[str]]:
         return {}, lines
     try:
         data = yaml.safe_load("\n".join(lines[1:close]))
-    except yaml.YAMLError:
+    # PyYAML's constructors, such as the timestamp one, raise plain ValueError.
+    except yaml.YAMLError, ValueError:
         return {}, lines
     if data is None:  # an empty block is still front matter
         data = {}
@@ -170,7 +176,7 @@ def _split_front_matter(lines: list[str]) -> tuple[dict[str, Any], list[str]]:
 
 def _string_field(front_matter: dict[str, Any], key: str) -> str | None:
     value = front_matter.get(key)
-    return value if isinstance(value, str) else None
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _headings(lines: list[str]) -> list[_Heading]:
@@ -207,9 +213,13 @@ def _inline_text(inline: Token) -> str:
 def _trim_trailing_blanks(lines: list[str], start: int, stop: int) -> int:
     """Return the 0-based index of the last non-blank line in ``[start, stop)``."""
     end = stop - 1
-    while end > start and not lines[end].strip():
+    while end > start and _is_blank(lines[end]):
         end -= 1
     return end
+
+
+def _is_blank(line: str) -> bool:
+    return not line.strip()
 
 
 def _slug(text: str) -> str:

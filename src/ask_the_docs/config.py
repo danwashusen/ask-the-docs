@@ -1,5 +1,6 @@
 """Load and validate the YAML config: tool settings and monitored codebases."""
 
+import os
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -19,7 +20,29 @@ CONFIG_ENV_VAR = "ATD_CONFIG"
 
 
 class ConfigError(Exception):
-    """The config file is missing or invalid. The message names the file and key."""
+    """The config file is missing or invalid, or its path cannot be resolved.
+
+    The message starts with the file path; validation errors also name the
+    dotted key.
+    """
+
+
+def _expand_user(path: Path) -> Path:
+    """Expand ``~``, raising ``ValueError`` when the home folder is unknown."""
+    try:
+        return path.expanduser()
+    except RuntimeError as exc:
+        raise ValueError(f"cannot expand '~' in {path}") from exc
+
+
+def _normalize_root(value: str | Path) -> Path:
+    """Expand ``~`` and collapse ``.`` and ``..`` without touching the disk."""
+    return Path(os.path.normpath(_expand_user(Path(value))))
+
+
+def _env_value(raw: str | None) -> str | None:
+    """Treat an empty environment variable as unset."""
+    return raw or None
 
 
 class CodebaseConfig(BaseModel):
@@ -33,16 +56,30 @@ class CodebaseConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _default_name(cls, data: Any) -> Any:
-        if isinstance(data, dict) and data.get("name") is None and "root" in data:
-            root = data["root"]
+        if isinstance(data, dict) and data.get("name") is None:
+            # A null name is absent: root fills it, or root's error is reported.
+            data = {key: value for key, value in data.items() if key != "name"}
+            root = data.get("root")
             if isinstance(root, (str, Path)):
-                data = {**data, "name": Path(root).expanduser().name}
+                try:
+                    data["name"] = _normalize_root(root).name
+                except ValueError:
+                    pass
         return data
+
+    @field_validator("name")
+    @classmethod
+    def _non_empty_name(cls, name: str) -> str:
+        if not name.strip():
+            raise ValueError(
+                "name must not be empty; set it when root has no folder name, such as '/'"
+            )
+        return name
 
     @field_validator("root")
     @classmethod
     def _absolute_root(cls, root: Path) -> Path:
-        root = root.expanduser()
+        root = _normalize_root(root)
         if not root.is_absolute():
             raise ValueError("root must be an absolute path")
         return root
@@ -61,7 +98,9 @@ class CodebaseConfig(BaseModel):
     @field_validator("exclude")
     @classmethod
     def _matchable_exclude(cls, exclude: list[str]) -> list[str]:
-        # Globs match root-relative POSIX paths, so other forms never match.
+        # Discovered paths are root-relative with no empty, '.' or '..' segments,
+        # so a glob with any of these, or a leading '/', can never match. A glob
+        # without wildcards matches only the file at that exact path.
         for glob in exclude:
             parts = glob.split("/")
             if glob.startswith("/") or any(p in ("", ".", "..") for p in parts):
@@ -80,10 +119,15 @@ class Config(BaseModel):
 def resolve_config_path(flag: Path | None, env: Mapping[str, str]) -> Path:
     """Return the config path: the flag, else ``ATD_CONFIG``, else the default."""
     if flag is not None:
-        return flag.expanduser()
-    if env_path := env.get(CONFIG_ENV_VAR):
-        return Path(env_path).expanduser()
-    return DEFAULT_CONFIG_PATH.expanduser()
+        path = flag
+    elif (env_path := _env_value(env.get(CONFIG_ENV_VAR))) is not None:
+        path = Path(env_path)
+    else:
+        path = DEFAULT_CONFIG_PATH
+    try:
+        return _expand_user(path)
+    except ValueError as exc:
+        raise ConfigError(f"{path}: {exc}") from exc
 
 
 def resolve_setting[T](
@@ -96,7 +140,7 @@ def resolve_setting[T](
     """Apply R-config-precedence: flag, then environment, then file, then default."""
     if flag is not None:
         return flag
-    if env_value is not None:
+    if (env_value := _env_value(env_value)) is not None:
         return convert(env_value)
     if file_value is not None:
         return file_value
@@ -115,7 +159,8 @@ def load_config(path: Path) -> Config:
         raise ConfigError(f"{path}: config file is not valid UTF-8") from exc
     try:
         data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
+    # PyYAML's constructors, such as the timestamp one, raise plain ValueError.
+    except (yaml.YAMLError, ValueError) as exc:
         raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
 
     try:
